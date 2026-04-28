@@ -1,8 +1,5 @@
 # Third-Party Notices
 
-The `LuaSkills/demo-skill` repository declares one optional tool dependency:
+`vulcan-curl` does not redistribute external command-line tools, Lua modules, or native libraries.
 
-- `rg` from the `BurntSushi/ripgrep` GitHub release distribution
-
-The dependency is not bundled into the repository itself.
-It is downloaded only by the LuaSkills dependency installer when the host allows network installation.
+The runtime expects the host environment to provide `lcurl.safe` and `socket`. Those modules are not bundled in this repository.

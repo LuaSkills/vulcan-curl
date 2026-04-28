@@ -1,34 +1,132 @@
-# demo-skill
+# vulcan-curl
 
-A complete demo LuaSkill repository at `LuaSkills/demo-skill` for testing package installation, GitHub release packaging, version updates, uninstall behavior, and one no-op `rg` dependency.
+AI-native HTTP request skill for Vulcan agents.
 
-## LuaSkill development manual
+Chinese version: [README.zh-CN.md](README.zh-CN.md)
 
-For LuaSkill runtime APIs, package rules, and development conventions, see the official development manuals:
+`vulcan-curl` provides an AI-friendly HTTP request layer for Vulcan agents. It offers simple structured `GET` and `POST` entries for common API calls, plus a lower-level curl-style argv entry for advanced request shapes, all without requiring agents to assemble platform-specific shell commands.
 
-- [Lua Skill Development Manual (English)](https://github.com/LuaSkills/luaskills/blob/main/docs/skill-development.md)
-- [Lua Skill 开发手册（中文）](https://github.com/LuaSkills/luaskills/blob/main/docs/zh-CN/skill-development.md)
+## When To Use
 
-## What this repository demonstrates
+Use `vulcan-curl` when an agent needs to make one HTTP request with predictable inputs and readable Markdown output:
 
-- the strict `skill.yaml` package layout
-- a required semantic `version` field in `skill.yaml`
-- a `dependencies.yaml` file with one skill-local `rg` dependency
-- multiple runtime entries under `runtime/`
-- help topics under `help/`
-- one overflow template under `overflow_templates/`
-- one resource file under `resources/`
-- GitHub Actions workflows for validation and release packaging
-- a tag-driven release workflow that only builds packages after a release tag is pushed
+- Fetch JSON, text, or binary responses from an HTTP endpoint.
+- Send structured query params and headers without hand-built URL strings.
+- Use Bearer or Basic Auth shortcuts.
+- Send JSON, form, multipart, or raw POST bodies.
+- Save response bodies or response headers to local files.
+- Use curl-style argv semantics for advanced request shapes while avoiding shell quoting problems.
 
-## Skill package layout
+Use a browser tool for interactive page flows, JavaScript-rendered UI testing, or screenshots. Use a normal shell command only when raw terminal curl behavior is the actual thing being tested.
+
+## Tools
+
+### `vulcan-curl-get`
+
+Use this entry for simple HTTP reads.
+
+Common inputs include:
+
+- `url`
+- `params` or `params_list`
+- `headers` or `header_lines`
+- `bearer`, `basic`, or `basic_text`
+- `timeout_ms`
+- `follow_location`
+- `download_to`
+- `save_headers_to`
+- `flags`
+
+Example:
+
+```yaml
+url: https://api.example.com/items
+params:
+  q: lua
+headers:
+  Accept: application/json
+flags: response-header
+```
+
+### `vulcan-curl-post`
+
+Use this entry for simple write-style requests with one main payload family.
+
+Supported payload families:
+
+- `json`
+- `form` / `form_lines`
+- `files` / `file_lines`
+- `body`
+
+Only one payload family should be used per request. Switch to `vulcan-curl-request` when the request shape no longer fits the structured POST schema.
+
+Example:
+
+```yaml
+url: https://api.example.com/items
+json:
+  name: example
+bearer: "${TOKEN}"
+flags: request-header,response-header
+```
+
+### `vulcan-curl-request`
+
+Use this entry when you need curl-style argv semantics without depending on platform-specific shell quoting.
+
+Example:
+
+```yaml
+args:
+  - -X
+  - POST
+  - https://api.example.com/items
+  - -H
+  - "Content-Type: application/json"
+  - -d
+  - '{"name":"example"}'
+flags: response-header
+```
+
+This entry is best for advanced TLS, proxy, upload, retry, and unusual request combinations. It still executes inside the Lua runtime layer rather than through a shell.
+
+## Output Controls
+
+`flags` is a comma-separated render flag string:
+
+- `request-header`: include request details
+- `response-header`: include response headers
+
+Unknown flags are ignored. Response bodies are shown inline unless `download_to` is used. Response headers can be saved with `save_headers_to`.
+
+## Runtime Requirements
+
+`vulcan-curl` expects the host Lua runtime to provide:
+
+- `lcurl.safe`
+- `socket`
+
+These runtime modules are not bundled in this repository. The skill package contains only the LuaSkill runtime code, help content, and release metadata.
+
+## Skill Package Layout
 
 ```text
-demo-skill/
+vulcan-curl/
 ├─ skill.yaml
 ├─ dependencies.yaml
+├─ README.md
+├─ README.zh-CN.md
 ├─ runtime/
+│  ├─ shared_http.lua
+│  ├─ vulcan-curl.lua
+│  ├─ vulcan-curl-get.lua
+│  └─ vulcan-curl-post.lua
 ├─ help/
+│  ├─ help.md
+│  ├─ get.md
+│  ├─ post.md
+│  └─ request.md
 ├─ overflow_templates/
 ├─ resources/
 ├─ licenses/
@@ -36,72 +134,38 @@ demo-skill/
 └─ .github/workflows/
 ```
 
-## Demo tools
-
-- `demo-status`
-  - returns stable runtime diagnostics for installation and lifecycle testing
-- `rg-check`
-  - reports the expected local `rg` dependency path and runs `rg --version` when the file exists
-- `overflow-demo`
-  - returns paged output and a skill-local overflow template hint
-
-## Demo dependency
-
-The repository declares one skill-local `rg` dependency in `dependencies.yaml`.
-
-The dependency is intentionally non-essential:
-
-- it is useful for testing install and uninstall behavior
-- it is safe to skip when network downloads are disabled
-- the `rg-check` tool can still return a diagnostic report when `rg` is missing
-
 ## Validation
 
-This repository includes one validation workflow and one release workflow.
-
-Local validation:
+Local repository validation:
 
 ```powershell
 python .\scripts\validate_skill.py
 python .\scripts\package_skill.py
 ```
 
-The default packaging script generates two artifacts under `dist/`:
+The packaging script generates release artifacts under `dist/`:
 
-- `<skill-id>-v<version>-skill.zip`
-- `<skill-id>-v<version>-checksums.txt`
+- `vulcan-curl-v<version>-skill.zip`
+- `vulcan-curl-v<version>-checksums.txt`
 
-For URL-based install and update tests, you can optionally generate one source metadata file:
+Optional source metadata:
 
 ```powershell
 python .\scripts\package_skill.py --emit-source-yaml
 ```
 
-That optional command adds:
+The generated metadata points to the matching `LuaSkills/vulcan-curl` GitHub release assets unless `--base-url` is provided.
 
-- `<skill-id>-v<version>-source.yaml`
+## Release Flow
 
-If you do not pass `--base-url`, the generated `source.yaml` points to the matching `LuaSkills/demo-skill` GitHub release asset names for the current manifest version.
-
-GitHub validation:
-
-- pushes to `main` do not trigger GitHub Actions automatically
-- pull requests only run structure validation
-- no release package is published from branch pushes
-
-## Tag-based release flow
-
-This repository uses a tag-driven release flow.
-
-Only a pushed tag that matches `v*` triggers package build and GitHub release publication.
-The tag must match `skill.yaml.version`.
+Releases are tag-driven. A pushed tag matching `v*` triggers the release workflow, and the tag must match `skill.yaml.version`.
 
 Recommended local release steps:
 
 ```powershell
 python .\scripts\validate_skill.py
 python .\scripts\package_skill.py
-.\scripts\tag_release.ps1 0.1.3
+.\scripts\tag_release.ps1 0.1.0
 ```
 
 Or on Unix-like shells:
@@ -109,79 +173,11 @@ Or on Unix-like shells:
 ```bash
 python ./scripts/validate_skill.py
 python ./scripts/package_skill.py
-./scripts/tag_release.sh 0.1.3
-```
-
-The helper scripts normalize the version into a `vX.Y.Z` tag and push it to `origin`.
-The packaging script treats `skill.yaml.version` as the release version source of truth and rejects mismatched tag or CLI versions.
-GitHub release publication only uploads the zip package and checksum file.
-
-If you want to generate source metadata with an explicit release asset URL, pass a base URL together with the source-yaml flag:
-
-```powershell
-python .\scripts\package_skill.py --emit-source-yaml --base-url https://github.com/LuaSkills/demo-skill/releases/download/v0.1.3
-```
-
-## Use this demo as your own skill repository
-
-This repository is intended to be forked as the starting point for a real LuaSkill package.
-
-Recommended first-time setup:
-
-1. Fork this repository from GitHub.
-2. In the fork form, set `Repository name` to your final skill id.
-   - The repository name should match `^[a-z]([a-z0-9-]*[a-z0-9])?$`.
-   - Use lowercase letters, numbers, and single hyphen-separated words, such as `my-skill` or `demo-tools`.
-3. Set `Description` to a short description of your own skill.
-4. Click `Create fork`.
-5. Open the forked repository settings and choose `Leave fork network` so the new repository becomes an independent skill repository.
-6. Clone your own repository:
-
-```powershell
-git clone https://github.com/<your-org-or-user>/<your-skill-id>.git
-cd <your-skill-id>
-```
-
-7. Start replacing the demo content with your own skill implementation.
-8. Update `skill.yaml`:
-   - set `name` to your display name
-   - set `version` to your first release version
-9. Update runtime, help, README, and resource files if they still mention `demo-skill` or `LuaSkills/demo-skill`.
-10. Run local validation:
-
-```powershell
-python .\scripts\validate_skill.py
-python .\scripts\package_skill.py
-```
-
-11. Tag and push your release:
-
-```powershell
-.\scripts\tag_release.ps1 0.1.3
-```
-
-Important notes:
-
-- The LuaSkill runtime identity comes from the packaged top-level directory name, not from the GitHub repository name alone.
-- If you only rename the GitHub repository but keep the packaged skill directory as `demo-skill`, the installed `skill_id` still remains `demo-skill`.
-- Always make sure the package root directory, release asset names, and documentation all match your final skill id before publishing.
-
-## Release packaging
-
-After the tag is pushed, the release workflow produces:
-
-- `<skill-id>-v<version>-skill.zip`
-- `<skill-id>-v<version>-checksums.txt`
-
-The zip file always expands to one top-level directory named exactly:
-
-```text
-demo-skill/
+./scripts/tag_release.sh 0.1.0
 ```
 
 ## Notes
 
-- Runtime output is intentionally English-only.
-- Code comments inside source files follow the rule: English line first, Chinese line second.
-- The repository root itself is the skill root, and the skill id is the directory name.
-- The optional `source.yaml` is reserved for URL-based install flows, self-hosted package endpoints, and future skillhub-compatible metadata responses rather than GitHub release publication.
+- The repository root is the skill root.
+- The installed skill id is derived from the package root directory name: `vulcan-curl`.
+- Runtime output is designed for AI agents: structured, concise by default, and explicit about request/response rendering choices.
