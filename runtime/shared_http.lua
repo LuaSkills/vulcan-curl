@@ -10,6 +10,22 @@ local function default_timeout_ms()
     return 60000
 end
 
+-- Cache the optional iconv module between requests.
+-- 在多次请求之间缓存可选的 iconv 模块。
+local ICONV_MODULE = nil
+
+-- Track whether the optional iconv module has already been probed.
+-- 记录可选的 iconv 模块是否已经探测过。
+local ICONV_MODULE_LOADED = false
+
+-- Cache the optional lua-utf8 module between requests.
+-- 在多次请求之间缓存可选的 lua-utf8 模块。
+local LUA_UTF8_MODULE = nil
+
+-- Track whether the optional lua-utf8 module has already been probed.
+-- 记录可选的 lua-utf8 模块是否已经探测过。
+local LUA_UTF8_MODULE_LOADED = false
+
 -- Return whether the current path text should be treated as absolute.
 -- 判断当前路径文本是否应视为绝对路径。
 local function is_absolute_path(path_text)
@@ -255,6 +271,12 @@ local function basename(path_text)
     return tostring(path_text):match("([^/\\]+)$") or tostring(path_text)
 end
 
+-- Return one trimmed string with leading and trailing whitespace removed.
+-- 返回一个移除了首尾空白字符的字符串。
+local function trim_text(text)
+    return (tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
 -- Return whether one header list already contains the target header name.
 -- 判断某个请求头列表中是否已包含目标头名。
 local function has_header(headers, header_name)
@@ -321,6 +343,365 @@ local function build_render_flags(args)
         flags.response_header = true
     end
     return flags
+end
+
+-- Load the optional iconv module once and keep a stable cached result.
+-- 加载可选的 iconv 模块一次，并缓存稳定结果。
+local function load_iconv_module()
+    if ICONV_MODULE_LOADED then
+        return ICONV_MODULE
+    end
+
+    ICONV_MODULE_LOADED = true
+    local ok, module_or_error = pcall(require, "iconv")
+    if ok and type(module_or_error) == "table" then
+        ICONV_MODULE = module_or_error
+    else
+        ICONV_MODULE = nil
+    end
+
+    return ICONV_MODULE
+end
+
+-- Load the optional lua-utf8 module once and keep a stable cached result.
+-- 加载可选的 lua-utf8 模块一次，并缓存稳定结果。
+local function load_lua_utf8_module()
+    if LUA_UTF8_MODULE_LOADED then
+        return LUA_UTF8_MODULE
+    end
+
+    LUA_UTF8_MODULE_LOADED = true
+    local ok, module_or_error = pcall(require, "lua-utf8")
+    if ok and type(module_or_error) == "table" then
+        LUA_UTF8_MODULE = module_or_error
+    else
+        LUA_UTF8_MODULE = nil
+    end
+
+    return LUA_UTF8_MODULE
+end
+
+-- Return whether the provided text is valid UTF-8, with a pure-Lua fallback when helper modules are unavailable.
+-- 返回给定文本是否为合法 UTF-8；当辅助模块不可用时使用纯 Lua 后备校验。
+local function is_valid_utf8_text(text)
+    local source = tostring(text or "")
+    local utf8_module = load_lua_utf8_module()
+    if utf8_module and type(utf8_module.isvalid) == "function" then
+        local ok, result = pcall(utf8_module.isvalid, source)
+        if ok then
+            return result == true
+        end
+    end
+
+    local index = 1
+    local length = #source
+    while index <= length do
+        local byte1 = source:byte(index)
+        if byte1 < 0x80 then
+            index = index + 1
+        elseif byte1 >= 0xC2 and byte1 <= 0xDF then
+            if index + 1 > length then
+                return false
+            end
+            local byte2 = source:byte(index + 1)
+            if byte2 < 0x80 or byte2 > 0xBF then
+                return false
+            end
+            index = index + 2
+        elseif byte1 == 0xE0 then
+            if index + 2 > length then
+                return false
+            end
+            local byte2 = source:byte(index + 1)
+            local byte3 = source:byte(index + 2)
+            if byte2 < 0xA0 or byte2 > 0xBF or byte3 < 0x80 or byte3 > 0xBF then
+                return false
+            end
+            index = index + 3
+        elseif (byte1 >= 0xE1 and byte1 <= 0xEC) or (byte1 >= 0xEE and byte1 <= 0xEF) then
+            if index + 2 > length then
+                return false
+            end
+            local byte2 = source:byte(index + 1)
+            local byte3 = source:byte(index + 2)
+            if byte2 < 0x80 or byte2 > 0xBF or byte3 < 0x80 or byte3 > 0xBF then
+                return false
+            end
+            index = index + 3
+        elseif byte1 == 0xED then
+            if index + 2 > length then
+                return false
+            end
+            local byte2 = source:byte(index + 1)
+            local byte3 = source:byte(index + 2)
+            if byte2 < 0x80 or byte2 > 0x9F or byte3 < 0x80 or byte3 > 0xBF then
+                return false
+            end
+            index = index + 3
+        elseif byte1 == 0xF0 then
+            if index + 3 > length then
+                return false
+            end
+            local byte2 = source:byte(index + 1)
+            local byte3 = source:byte(index + 2)
+            local byte4 = source:byte(index + 3)
+            if byte2 < 0x90 or byte2 > 0xBF or byte3 < 0x80 or byte3 > 0xBF or byte4 < 0x80 or byte4 > 0xBF then
+                return false
+            end
+            index = index + 4
+        elseif byte1 >= 0xF1 and byte1 <= 0xF3 then
+            if index + 3 > length then
+                return false
+            end
+            local byte2 = source:byte(index + 1)
+            local byte3 = source:byte(index + 2)
+            local byte4 = source:byte(index + 3)
+            if byte2 < 0x80 or byte2 > 0xBF or byte3 < 0x80 or byte3 > 0xBF or byte4 < 0x80 or byte4 > 0xBF then
+                return false
+            end
+            index = index + 4
+        elseif byte1 == 0xF4 then
+            if index + 3 > length then
+                return false
+            end
+            local byte2 = source:byte(index + 1)
+            local byte3 = source:byte(index + 2)
+            local byte4 = source:byte(index + 3)
+            if byte2 < 0x80 or byte2 > 0x8F or byte3 < 0x80 or byte3 > 0xBF or byte4 < 0x80 or byte4 > 0xBF then
+                return false
+            end
+            index = index + 4
+        else
+            return false
+        end
+    end
+
+    return true
+end
+
+-- Clean one invalid UTF-8 string when the runtime exposes a helper; otherwise return nil to signal no safe cleanup path.
+-- 当运行时暴露辅助能力时清洗一段无效 UTF-8；否则返回 nil 表示没有安全清洗路径。
+local function clean_invalid_utf8_text(text)
+    local source = tostring(text or "")
+    local utf8_module = load_lua_utf8_module()
+    if utf8_module and type(utf8_module.clean) == "function" then
+        local ok, cleaned = pcall(utf8_module.clean, source)
+        if ok and type(cleaned) == "string" and cleaned ~= "" then
+            return cleaned
+        end
+    end
+
+    return nil
+end
+
+-- Normalize one charset label into a stable iconv-friendly name.
+-- 将一个字符集标签规范化为稳定的 iconv 友好名称。
+local function normalize_charset_name(charset_name)
+    local normalized = trim_text(charset_name):lower()
+    if normalized == "" then
+        return nil
+    end
+
+    normalized = normalized:gsub("^['\"]+", ""):gsub("['\"]+$", "")
+    normalized = normalized:gsub("[%s_]+", "-")
+
+    local aliases = {
+        ["utf8"] = "utf-8",
+        ["us-ascii"] = "utf-8",
+        ["ascii"] = "utf-8",
+        ["gbk"] = "gb18030",
+        ["gb2312"] = "gb18030",
+        ["gb-2312"] = "gb18030",
+        ["cp936"] = "gb18030",
+        ["ms936"] = "gb18030",
+        ["x-gbk"] = "gb18030",
+        ["latin1"] = "iso-8859-1",
+        ["latin-1"] = "iso-8859-1",
+        ["cp1252"] = "windows-1252",
+        ["windows1252"] = "windows-1252",
+        ["sjis"] = "shift-jis",
+    }
+
+    return aliases[normalized] or normalized
+end
+
+-- Extract the final response media type and declared charset from collected response headers.
+-- 从已收集的响应头中提取最终响应的媒体类型与显式声明的字符集。
+local function extract_response_content_type(headers_text)
+    local normalized_headers = tostring(headers_text or ""):gsub("\r\n", "\n"):gsub("\r", "\n")
+    local content_type_value = nil
+    for raw_line in normalized_headers:gmatch("([^\n]*)\n?") do
+        local header_name, header_value = raw_line:match("^%s*([^:]+)%s*:%s*(.-)%s*$")
+        if header_name and header_value and header_name:lower() == "content-type" then
+            content_type_value = header_value
+        end
+    end
+
+    if not content_type_value or trim_text(content_type_value) == "" then
+        return nil, nil
+    end
+
+    local media_type = trim_text((content_type_value:match("^([^;]+)") or content_type_value)):lower()
+    local charset_name = content_type_value:match("[Cc][Hh][Aa][Rr][Ss][Ee][Tt]%s*=%s*\"?([^\";]+)\"?")
+    return media_type, normalize_charset_name(charset_name)
+end
+
+-- Return whether the response media type should be treated as textual content that may be safely rendered inline.
+-- 返回响应媒体类型是否应视为可内联展示的文本内容。
+local function is_textual_content_type(content_type)
+    local normalized = trim_text(content_type):lower()
+    if normalized == "" then
+        return false
+    end
+
+    if starts_with_any(normalized, { "text/" }) then
+        return true
+    end
+
+    if normalized == "application/json"
+        or normalized == "application/xml"
+        or normalized == "application/javascript"
+        or normalized == "application/x-www-form-urlencoded"
+        or normalized == "image/svg+xml" then
+        return true
+    end
+
+    return normalized:match("%+json$") ~= nil or normalized:match("%+xml$") ~= nil
+end
+
+-- Return whether the sampled byte stream looks like binary payload rather than printable text.
+-- 返回采样后的字节流是否更像二进制负载而不是可打印文本。
+local function looks_like_binary_body(body_bytes)
+    local sample = tostring(body_bytes or ""):sub(1, 4096)
+    if sample == "" then
+        return false
+    end
+
+    local control_count = 0
+    for index = 1, #sample do
+        local current = sample:byte(index)
+        if current == 0 then
+            return true
+        end
+        if (current < 32 and current ~= 9 and current ~= 10 and current ~= 13 and current ~= 12) or current == 127 then
+            control_count = control_count + 1
+        end
+    end
+
+    return control_count > math.max(8, math.floor(#sample * 0.10))
+end
+
+-- Convert one raw byte string into UTF-8 text according to the selected source charset.
+-- 按选定源字符集把一段原始字节串转换为 UTF-8 文本。
+local function convert_body_bytes_to_utf8(body_bytes, source_charset)
+    local normalized_charset = normalize_charset_name(source_charset)
+    if not normalized_charset then
+        return nil
+    end
+
+    local source = tostring(body_bytes or "")
+    if normalized_charset == "utf-8" then
+        if is_valid_utf8_text(source) then
+            return source, "utf-8"
+        end
+
+        local cleaned = clean_invalid_utf8_text(source)
+        if cleaned and is_valid_utf8_text(cleaned) then
+            return cleaned, "utf-8-cleaned"
+        end
+
+        return nil
+    end
+
+    local iconv_module = load_iconv_module()
+    if not iconv_module or type(iconv_module.new) ~= "function" then
+        return nil
+    end
+
+    local constructor_ok, converter = pcall(iconv_module.new, "utf-8", normalized_charset)
+    if not constructor_ok or not converter then
+        return nil
+    end
+
+    local convert_ok, converted = pcall(converter.iconv, converter, source)
+    if not convert_ok or type(converted) ~= "string" or converted == "" then
+        return nil
+    end
+
+    if is_valid_utf8_text(converted) then
+        return converted, normalized_charset
+    end
+
+    local cleaned = clean_invalid_utf8_text(converted)
+    if cleaned and is_valid_utf8_text(cleaned) then
+        return cleaned, normalized_charset .. "-cleaned"
+    end
+
+    return nil
+end
+
+-- Normalize one collected response body into safe UTF-8 text or one explicit omission summary.
+-- 把已收集的响应体规范化为安全 UTF-8 文本，或生成明确的省略摘要。
+local function normalize_response_body(raw_body_bytes, headers_text)
+    local source = tostring(raw_body_bytes or "")
+    local body_size = #source
+    local content_type, declared_charset = extract_response_content_type(headers_text)
+    local textual_type = is_textual_content_type(content_type)
+
+    local function build_result(body_text, body_encoding, render_mode, render_note)
+        return {
+            body_text = body_text,
+            body_bytes = body_size,
+            body_content_type = content_type,
+            body_charset = declared_charset,
+            body_encoding = body_encoding,
+            body_render_mode = render_mode,
+            body_render_note = render_note,
+        }
+    end
+
+    if source == "" then
+        return build_result(nil, nil, "empty", nil)
+    end
+
+    if declared_charset then
+        local converted, used_encoding = convert_body_bytes_to_utf8(source, declared_charset)
+        if converted then
+            return build_result(converted, used_encoding, "inline", nil)
+        end
+
+        return build_result(nil, nil, "omitted", "declared text body could not be converted to UTF-8 safely")
+    end
+
+    if is_valid_utf8_text(source) and (textual_type or not looks_like_binary_body(source)) then
+        return build_result(source, "utf-8", "inline", nil)
+    end
+
+    if textual_type and not looks_like_binary_body(source) then
+        local guess_candidates = {
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "euc-kr",
+            "windows-1252",
+            "iso-8859-1",
+        }
+        for _, candidate in ipairs(guess_candidates) do
+            local converted, used_encoding = convert_body_bytes_to_utf8(source, candidate)
+            if converted then
+                return build_result(converted, used_encoding, "inline", "charset guessed from textual response body")
+            end
+        end
+
+        local cleaned = clean_invalid_utf8_text(source)
+        if cleaned and is_valid_utf8_text(cleaned) then
+            return build_result(cleaned, "utf-8-cleaned", "inline", "invalid UTF-8 bytes were cleaned before rendering")
+        end
+
+        return build_result(nil, nil, "omitted", "textual response body could not be converted to UTF-8 safely")
+    end
+
+    return build_result(nil, nil, "omitted", "response body appears to be binary data; use download_to to save it")
 end
 
 -- Normalize one incoming argv list into a plain Lua string array.
@@ -868,11 +1249,24 @@ local function perform_request(spec, base_dir, default_timeout)
         local code = bundle.easy:getinfo_response_code()
         local effective_url = bundle.easy:getinfo_effective_url()
         local headers_text = table.concat(bundle.header_chunks)
-        local body_text = bundle.output_handle and nil or table.concat(bundle.body_chunks)
+        local raw_body_bytes = bundle.output_handle and nil or table.concat(bundle.body_chunks)
         close_request_resources(bundle)
 
         if spec.dump_header_path and headers_text and headers_text ~= "" then
             write_text_file(spec.dump_header_path, headers_text)
+        end
+
+        local body_result = {
+            body_text = nil,
+            body_bytes = 0,
+            body_content_type = nil,
+            body_charset = nil,
+            body_encoding = nil,
+            body_render_mode = bundle.output_handle and "file" or "empty",
+            body_render_note = nil,
+        }
+        if not bundle.output_handle then
+            body_result = normalize_response_body(raw_body_bytes, headers_text)
         end
 
         last_result = {
@@ -881,7 +1275,13 @@ local function perform_request(spec, base_dir, default_timeout)
             status_code = code,
             effective_url = effective_url,
             headers_text = headers_text,
-            body_text = body_text,
+            body_text = body_result.body_text,
+            body_bytes = body_result.body_bytes,
+            body_content_type = body_result.body_content_type,
+            body_charset = body_result.body_charset,
+            body_encoding = body_result.body_encoding,
+            body_render_mode = body_result.body_render_mode,
+            body_render_note = body_result.body_render_note,
             method = method,
             request_url = bundle.url,
             output_path = spec.output_path,
@@ -913,6 +1313,30 @@ local function perform_request(spec, base_dir, default_timeout)
     return last_result
 end
 
+-- Append one response body section to the outgoing Markdown result with either inline text or a stable omission summary.
+-- 以正文文本或稳定省略摘要的形式向最终 Markdown 结果追加响应体区块。
+local function append_response_body_section(lines, result)
+    if result.body_text and result.body_text ~= "" then
+        lines[#lines + 1] = ""
+        lines[#lines + 1] = "## Response Body"
+        if result.body_render_note and result.body_render_note ~= "" then
+            lines[#lines + 1] = "- note: `" .. tostring(result.body_render_note) .. "`"
+            lines[#lines + 1] = ""
+        end
+        lines[#lines + 1] = result.body_text
+        return
+    end
+
+    if result.body_render_mode == "omitted" then
+        lines[#lines + 1] = ""
+        lines[#lines + 1] = "## Response Body"
+        lines[#lines + 1] = "- omitted: `true`"
+        if result.body_render_note and result.body_render_note ~= "" then
+            lines[#lines + 1] = "- reason: `" .. tostring(result.body_render_note) .. "`"
+        end
+    end
+end
+
 -- Render one request result into a stable Markdown success response.
 -- 将请求结果渲染为稳定的 Markdown 成功响应。
 local function render_success_markdown(result, spec)
@@ -929,6 +1353,15 @@ local function render_success_markdown(result, spec)
     end
     if result.dump_header_path then
         lines[#lines + 1] = "- header_file: `" .. tostring(result.dump_header_path) .. "`"
+    end
+    if result.body_content_type and result.body_content_type ~= "" then
+        lines[#lines + 1] = "- content_type: `" .. tostring(result.body_content_type) .. "`"
+    end
+    if result.body_encoding and result.body_encoding ~= "" then
+        lines[#lines + 1] = "- body_encoding: `" .. tostring(result.body_encoding) .. "`"
+    end
+    if tonumber(result.body_bytes) and tonumber(result.body_bytes) > 0 then
+        lines[#lines + 1] = "- body_bytes: `" .. tostring(result.body_bytes) .. "`"
     end
 
     if has_render_flag(spec, "request_header") then
@@ -948,11 +1381,7 @@ local function render_success_markdown(result, spec)
         lines[#lines + 1] = result.headers_text
     end
 
-    if result.body_text and result.body_text ~= "" then
-        lines[#lines + 1] = ""
-        lines[#lines + 1] = "## Response Body"
-        lines[#lines + 1] = result.body_text
-    end
+    append_response_body_section(lines, result)
 
     return table.concat(lines, "\n")
 end
@@ -979,6 +1408,15 @@ local function render_error_markdown(message, result, spec)
         if result.dump_header_path then
             lines[#lines + 1] = "- header_file: `" .. tostring(result.dump_header_path) .. "`"
         end
+        if result.body_content_type and result.body_content_type ~= "" then
+            lines[#lines + 1] = "- content_type: `" .. tostring(result.body_content_type) .. "`"
+        end
+        if result.body_encoding and result.body_encoding ~= "" then
+            lines[#lines + 1] = "- body_encoding: `" .. tostring(result.body_encoding) .. "`"
+        end
+        if tonumber(result.body_bytes) and tonumber(result.body_bytes) > 0 then
+            lines[#lines + 1] = "- body_bytes: `" .. tostring(result.body_bytes) .. "`"
+        end
 
         if has_render_flag(spec, "request_header") then
             lines[#lines + 1] = ""
@@ -997,11 +1435,7 @@ local function render_error_markdown(message, result, spec)
             lines[#lines + 1] = result.headers_text
         end
 
-        if result.body_text and result.body_text ~= "" then
-            lines[#lines + 1] = ""
-            lines[#lines + 1] = "## Response Body"
-            lines[#lines + 1] = result.body_text
-        end
+        append_response_body_section(lines, result)
     end
 
     return table.concat(lines, "\n")
@@ -1021,6 +1455,8 @@ local function execute_parsed_request(spec, base_dir, timeout_ms)
         local error_text = "HTTP request failed with status " .. tostring(result.status_code)
         if not spec.fail_with_body then
             result.body_text = nil
+            result.body_render_mode = nil
+            result.body_render_note = nil
         end
         return render_error_markdown(error_text, result, spec)
     end
