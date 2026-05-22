@@ -1,5 +1,6 @@
 {
   "type": "object",
+  "description": "Structured POST-style request input for API debugging, webhook testing, or upload checks. The tool returns raw HTTP response content and does not render webpages or convert HTML to Markdown.",
   "properties": {
     "url": {
       "type": "string",
@@ -151,7 +152,7 @@
     },
     "download_to": {
       "type": "string",
-      "description": "Optional local file path used to save the response body."
+      "description": "Optional local file path used to save the response body. Prefer this for binary payloads or file downloads instead of inline webpage-style reading."
     },
     "save_headers_to": {
       "type": "string",
@@ -163,7 +164,7 @@
     },
     "flags": {
       "type": "string",
-      "description": "Optional comma-separated render flags string. Example: \"request-header,response-header\". Empty by default. Use request-header to include request details, response-header to include response headers. Unknown flags are ignored."
+      "description": "Optional comma-separated render flags string. Example: \"request-header,response-header\". Empty by default. Use request-header to include request details, response-header to include response headers. Unknown flags are ignored. Inline body output is raw HTTP content, not webpage rendering or Markdown conversion."
     }
   },
   "required": [
