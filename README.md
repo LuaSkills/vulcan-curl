@@ -130,6 +130,10 @@ vulcan-curl/
 │  ├─ vulcan-curl.lua
 │  ├─ vulcan-curl-get.lua
 │  └─ vulcan-curl-post.lua
+├─ schemas/
+│  ├─ get.input.schema.json
+│  ├─ post.input.schema.json
+│  └─ request.input.schema.json
 ├─ help/
 │  ├─ help.md
 │  ├─ get.md
@@ -173,7 +177,7 @@ Recommended local release steps:
 ```powershell
 python .\scripts\validate_skill.py
 python .\scripts\package_skill.py
-.\scripts\tag_release.ps1 0.1.1
+.\scripts\tag_release.ps1 0.1.2
 ```
 
 Or on Unix-like shells:
@@ -181,7 +185,7 @@ Or on Unix-like shells:
 ```bash
 python ./scripts/validate_skill.py
 python ./scripts/package_skill.py
-./scripts/tag_release.sh 0.1.1
+./scripts/tag_release.sh 0.1.2
 ```
 
 ## Notes

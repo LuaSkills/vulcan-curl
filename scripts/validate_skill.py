@@ -54,6 +54,28 @@ def load_yaml(path: Path) -> dict:
 
 
 """
+Normalize one manifest-relative path string to slash-separated form.
+将一段相对清单路径规范化为使用斜杠的形式。
+"""
+def normalize_manifest_relative_path(value: str) -> str:
+    return value.replace("\\", "/").strip()
+
+
+"""
+Return whether one legacy entry definition requires one explicit JSON schema.
+返回单个旧版入口定义是否需要显式 JSON schema。
+"""
+def legacy_parameters_require_explicit_schema(entry: dict) -> bool:
+    parameters = entry.get("parameters", [])
+    if not isinstance(parameters, list):
+        return False
+    for parameter in parameters:
+        if isinstance(parameter, dict) and str(parameter.get("type", "")).strip() == "array":
+            return True
+    return False
+
+
+"""
 Validate the strict top-level repository layout.
 校验严格的顶层仓库目录结构。
 """
@@ -66,6 +88,7 @@ def validate_layout(root: Path) -> None:
     required_dirs = [
         root / "runtime",
         root / "help",
+        root / "schemas",
         root / "overflow_templates",
         root / "resources",
         root / "licenses",
@@ -97,6 +120,33 @@ def validate_manifest(root: Path) -> None:
         require(isinstance(entry_name, str) and entry_name, "Each entry requires a non-empty name")
         require(isinstance(lua_entry, str) and lua_entry, f"Entry '{entry_name}' requires lua_entry")
         require((root / lua_entry).is_file(), f"Entry '{entry_name}' points to a missing file: {lua_entry}")
+
+        input_schema = entry.get("input_schema")
+        input_schema_file = entry.get("input_schema_file")
+        has_inline_schema = input_schema is not None
+        has_schema_file = isinstance(input_schema_file, str) and bool(input_schema_file.strip())
+        require(
+            not (has_inline_schema and has_schema_file),
+            f"Entry '{entry_name}' must not declare both input_schema and input_schema_file",
+        )
+        if input_schema_file is not None:
+            require(
+                isinstance(input_schema_file, str) and input_schema_file.strip(),
+                f"Entry '{entry_name}' input_schema_file must be one non-empty string",
+            )
+            normalized_schema_path = normalize_manifest_relative_path(input_schema_file)
+            require(
+                normalized_schema_path.startswith("schemas/"),
+                f"Entry '{entry_name}' input_schema_file must stay under schemas/",
+            )
+            require(
+                (root / normalized_schema_path).is_file(),
+                f"Entry '{entry_name}' points to a missing schema file: {normalized_schema_path}",
+            )
+        require(
+            has_inline_schema or has_schema_file or not legacy_parameters_require_explicit_schema(entry),
+            f"Entry '{entry_name}' must declare input_schema or input_schema_file when legacy parameters contain array types",
+        )
 
     help_block = manifest.get("help", {})
     main_help = help_block.get("main")

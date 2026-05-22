@@ -92,6 +92,7 @@ def collect_package_paths(root: Path) -> list[Path]:
         "LICENSE",
         "runtime",
         "help",
+        "schemas",
         "overflow_templates",
         "resources",
         "licenses",
