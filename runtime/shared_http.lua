@@ -628,6 +628,40 @@ local function normalize_response_headers_text(raw_headers_text)
     return replace_invalid_utf8_text(source), "response header bytes contained invalid UTF-8 and were replacement-sanitized before rendering"
 end
 
+-- Normalize the final Markdown string before it crosses the host API boundary.
+-- 在最终 Markdown 字符串跨过宿主 API 边界前进行规范化。
+-- Parameters: rendered_text is the complete tool response text; returns one host-safe UTF-8 string.
+-- 参数：rendered_text 为完整工具响应文本；返回一个宿主安全的 UTF-8 字符串。
+local function normalize_host_return_text(rendered_text)
+    -- Source contains the complete rendered response assembled from all sections.
+    -- source 保存由所有区块组装完成的完整响应文本。
+    local source = tostring(rendered_text or "")
+    if source == "" or is_valid_utf8_text(source) then
+        return source
+    end
+
+    -- Final boundary sanitization is intentionally broad because any raw byte leak makes the whole LuaSkill call fail.
+    -- 最终边界清洗刻意覆盖完整响应，因为任何原始字节泄漏都会导致整个 LuaSkill 调用失败。
+    return replace_invalid_utf8_text(source)
+end
+
+-- Normalize one error message before it is embedded into Markdown output.
+-- 在错误消息嵌入 Markdown 输出前进行规范化。
+-- Parameters: error_text is a runtime error string that may contain native encoded bytes; returns host-safe UTF-8 text.
+-- 参数：error_text 为可能包含本地编码字节的运行时错误字符串；返回宿主安全的 UTF-8 文本。
+local function normalize_error_text(error_text)
+    -- Source captures native runtime errors before they are rendered for AI consumption.
+    -- source 捕获原生运行时错误，随后才会渲染给 AI 使用。
+    local source = tostring(error_text or "")
+    if source == "" or is_valid_utf8_text(source) then
+        return source
+    end
+
+    -- Native module loader errors on Windows can include non-UTF-8 system messages, so keep the useful path context and sanitize bytes.
+    -- Windows 原生模块加载错误可能包含非 UTF-8 系统消息，因此保留有用的路径上下文并清洗字节。
+    return replace_invalid_utf8_text(source)
+end
+
 -- Normalize one charset label into a stable iconv-friendly name.
 -- 将一个字符集标签规范化为稳定的 iconv 友好名称。
 local function normalize_charset_name(charset_name)
@@ -1522,7 +1556,7 @@ local function render_success_markdown(result, spec)
 
     append_response_body_section(lines, result)
 
-    return table.concat(lines, "\n")
+    return normalize_host_return_text(table.concat(lines, "\n"))
 end
 
 -- Render one request result into a stable Markdown error response.
@@ -1532,7 +1566,7 @@ local function render_error_markdown(message, result, spec)
         "# Curl Error",
         "",
         "## Error",
-        tostring(message),
+        normalize_error_text(message),
     }
 
     if result then
@@ -1580,7 +1614,7 @@ local function render_error_markdown(message, result, spec)
         append_response_body_section(lines, result)
     end
 
-    return table.concat(lines, "\n")
+    return normalize_host_return_text(table.concat(lines, "\n"))
 end
 
 -- Execute one parsed curl request end-to-end and return one Markdown string.
