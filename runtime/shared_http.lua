@@ -494,6 +494,140 @@ local function clean_invalid_utf8_text(text)
     return nil
 end
 
+-- Replace invalid UTF-8 byte sequences with the standard replacement character.
+-- 使用标准替换字符替换非法 UTF-8 字节序列。
+-- Parameters: text is the raw byte string to sanitize; returns one valid UTF-8 string.
+-- 参数：text 为需要清洗的原始字节串；返回一个合法 UTF-8 字符串。
+local function replace_invalid_utf8_text(text)
+    -- Source contains the raw bytes being checked for host-safe rendering.
+    -- source 保存用于宿主安全渲染检查的原始字节。
+    local source = tostring(text or "")
+    -- Output accumulates already-valid UTF-8 slices and replacement characters.
+    -- output 累积已确认合法的 UTF-8 片段与替换字符。
+    local output = {}
+    -- Index tracks the current byte offset in the raw string.
+    -- index 记录原始字符串中的当前字节偏移。
+    local index = 1
+    -- Length stores the raw byte length so truncated sequences can be detected.
+    -- length 保存原始字节长度，用于识别截断序列。
+    local length = #source
+    -- Replacement is the UTF-8 encoding of U+FFFD used for invalid bytes.
+    -- replacement 是用于替换非法字节的 U+FFFD 的 UTF-8 编码。
+    local replacement = "\239\191\189"
+
+    while index <= length do
+        -- Byte1 is the leading byte that determines the expected UTF-8 sequence shape.
+        -- byte1 是决定预期 UTF-8 序列形态的首字节。
+        local byte1 = source:byte(index)
+        -- Sequence length records how many bytes can be copied when validation succeeds.
+        -- sequence_length 记录校验成功时可以复制的序列字节数。
+        local sequence_length = nil
+        -- Valid sequence records whether the current byte sequence is safe to render unchanged.
+        -- valid_sequence 记录当前字节序列是否可原样安全渲染。
+        local valid_sequence = false
+
+        if byte1 < 0x80 then
+            sequence_length = 1
+            valid_sequence = true
+        elseif byte1 >= 0xC2 and byte1 <= 0xDF then
+            sequence_length = 2
+            if index + 1 <= length then
+                -- Byte2 is the continuation byte for a two-byte UTF-8 sequence.
+                -- byte2 是双字节 UTF-8 序列的延续字节。
+                local byte2 = source:byte(index + 1)
+                valid_sequence = byte2 >= 0x80 and byte2 <= 0xBF
+            end
+        elseif byte1 == 0xE0 then
+            sequence_length = 3
+            if index + 2 <= length then
+                -- Byte2 and byte3 are checked with E0-specific lower-bound rules to reject overlong encodings.
+                -- byte2 与 byte3 按 E0 专属下界规则校验，用于拒绝超长编码。
+                local byte2 = source:byte(index + 1)
+                local byte3 = source:byte(index + 2)
+                valid_sequence = byte2 >= 0xA0 and byte2 <= 0xBF and byte3 >= 0x80 and byte3 <= 0xBF
+            end
+        elseif (byte1 >= 0xE1 and byte1 <= 0xEC) or (byte1 >= 0xEE and byte1 <= 0xEF) then
+            sequence_length = 3
+            if index + 2 <= length then
+                -- Byte2 and byte3 are continuation bytes for ordinary three-byte UTF-8 sequences.
+                -- byte2 与 byte3 是普通三字节 UTF-8 序列的延续字节。
+                local byte2 = source:byte(index + 1)
+                local byte3 = source:byte(index + 2)
+                valid_sequence = byte2 >= 0x80 and byte2 <= 0xBF and byte3 >= 0x80 and byte3 <= 0xBF
+            end
+        elseif byte1 == 0xED then
+            sequence_length = 3
+            if index + 2 <= length then
+                -- Byte2 uses the ED-specific upper-bound rule to reject surrogate code points.
+                -- byte2 按 ED 专属上界规则校验，用于拒绝代理项码点。
+                local byte2 = source:byte(index + 1)
+                local byte3 = source:byte(index + 2)
+                valid_sequence = byte2 >= 0x80 and byte2 <= 0x9F and byte3 >= 0x80 and byte3 <= 0xBF
+            end
+        elseif byte1 == 0xF0 then
+            sequence_length = 4
+            if index + 3 <= length then
+                -- Byte2 through byte4 are checked with F0-specific lower-bound rules to reject overlong encodings.
+                -- byte2 到 byte4 按 F0 专属下界规则校验，用于拒绝超长编码。
+                local byte2 = source:byte(index + 1)
+                local byte3 = source:byte(index + 2)
+                local byte4 = source:byte(index + 3)
+                valid_sequence = byte2 >= 0x90 and byte2 <= 0xBF and byte3 >= 0x80 and byte3 <= 0xBF and byte4 >= 0x80 and byte4 <= 0xBF
+            end
+        elseif byte1 >= 0xF1 and byte1 <= 0xF3 then
+            sequence_length = 4
+            if index + 3 <= length then
+                -- Byte2 through byte4 are continuation bytes for ordinary four-byte UTF-8 sequences.
+                -- byte2 到 byte4 是普通四字节 UTF-8 序列的延续字节。
+                local byte2 = source:byte(index + 1)
+                local byte3 = source:byte(index + 2)
+                local byte4 = source:byte(index + 3)
+                valid_sequence = byte2 >= 0x80 and byte2 <= 0xBF and byte3 >= 0x80 and byte3 <= 0xBF and byte4 >= 0x80 and byte4 <= 0xBF
+            end
+        elseif byte1 == 0xF4 then
+            sequence_length = 4
+            if index + 3 <= length then
+                -- Byte2 uses the F4-specific upper-bound rule to stay within the Unicode maximum code point.
+                -- byte2 按 F4 专属上界规则校验，确保不超过 Unicode 最大码点。
+                local byte2 = source:byte(index + 1)
+                local byte3 = source:byte(index + 2)
+                local byte4 = source:byte(index + 3)
+                valid_sequence = byte2 >= 0x80 and byte2 <= 0x8F and byte3 >= 0x80 and byte3 <= 0xBF and byte4 >= 0x80 and byte4 <= 0xBF
+            end
+        end
+
+        if valid_sequence then
+            output[#output + 1] = source:sub(index, index + sequence_length - 1)
+            index = index + sequence_length
+        else
+            -- Invalid response header bytes must never cross the host API boundary because the host requires UTF-8 strings.
+            -- 非法响应头字节绝不能跨过宿主 API 边界，因为宿主要求返回字符串必须是 UTF-8。
+            output[#output + 1] = replacement
+            index = index + 1
+        end
+    end
+
+    return table.concat(output)
+end
+
+-- Normalize collected response headers into host-safe UTF-8 render text.
+-- 将收集到的响应头规范化为宿主安全的 UTF-8 展示文本。
+-- Parameters: raw_headers_text is the raw header byte string; returns safe header text and an optional note.
+-- 参数：raw_headers_text 为原始响应头字节串；返回安全响应头文本和可选说明。
+local function normalize_response_headers_text(raw_headers_text)
+    local source = tostring(raw_headers_text or "")
+    if source == "" or is_valid_utf8_text(source) then
+        return source, nil
+    end
+
+    local cleaned = clean_invalid_utf8_text(source)
+    if cleaned and is_valid_utf8_text(cleaned) then
+        return cleaned, "response header bytes contained invalid UTF-8 and were cleaned before rendering"
+    end
+
+    return replace_invalid_utf8_text(source), "response header bytes contained invalid UTF-8 and were replacement-sanitized before rendering"
+end
+
 -- Normalize one charset label into a stable iconv-friendly name.
 -- 将一个字符集标签规范化为稳定的 iconv 友好名称。
 local function normalize_charset_name(charset_name)
@@ -1248,12 +1382,13 @@ local function perform_request(spec, base_dir, default_timeout)
         local ok, err = bundle.easy:perform()
         local code = bundle.easy:getinfo_response_code()
         local effective_url = bundle.easy:getinfo_effective_url()
-        local headers_text = table.concat(bundle.header_chunks)
+        local raw_headers_text = table.concat(bundle.header_chunks)
+        local headers_text, headers_render_note = normalize_response_headers_text(raw_headers_text)
         local raw_body_bytes = bundle.output_handle and nil or table.concat(bundle.body_chunks)
         close_request_resources(bundle)
 
-        if spec.dump_header_path and headers_text and headers_text ~= "" then
-            write_text_file(spec.dump_header_path, headers_text)
+        if spec.dump_header_path and raw_headers_text and raw_headers_text ~= "" then
+            write_text_file(spec.dump_header_path, raw_headers_text)
         end
 
         local body_result = {
@@ -1266,7 +1401,7 @@ local function perform_request(spec, base_dir, default_timeout)
             body_render_note = nil,
         }
         if not bundle.output_handle then
-            body_result = normalize_response_body(raw_body_bytes, headers_text)
+            body_result = normalize_response_body(raw_body_bytes, raw_headers_text)
         end
 
         last_result = {
@@ -1275,6 +1410,7 @@ local function perform_request(spec, base_dir, default_timeout)
             status_code = code,
             effective_url = effective_url,
             headers_text = headers_text,
+            headers_render_note = headers_render_note,
             body_text = body_result.body_text,
             body_bytes = body_result.body_bytes,
             body_content_type = body_result.body_content_type,
@@ -1360,6 +1496,9 @@ local function render_success_markdown(result, spec)
     if result.body_encoding and result.body_encoding ~= "" then
         lines[#lines + 1] = "- body_encoding: `" .. tostring(result.body_encoding) .. "`"
     end
+    if result.headers_render_note and result.headers_render_note ~= "" then
+        lines[#lines + 1] = "- headers_note: `" .. tostring(result.headers_render_note) .. "`"
+    end
     if tonumber(result.body_bytes) and tonumber(result.body_bytes) > 0 then
         lines[#lines + 1] = "- body_bytes: `" .. tostring(result.body_bytes) .. "`"
     end
@@ -1413,6 +1552,9 @@ local function render_error_markdown(message, result, spec)
         end
         if result.body_encoding and result.body_encoding ~= "" then
             lines[#lines + 1] = "- body_encoding: `" .. tostring(result.body_encoding) .. "`"
+        end
+        if result.headers_render_note and result.headers_render_note ~= "" then
+            lines[#lines + 1] = "- headers_note: `" .. tostring(result.headers_render_note) .. "`"
         end
         if tonumber(result.body_bytes) and tonumber(result.body_bytes) > 0 then
             lines[#lines + 1] = "- body_bytes: `" .. tostring(result.body_bytes) .. "`"

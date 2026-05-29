@@ -177,7 +177,7 @@ Recommended local release steps:
 ```powershell
 python .\scripts\validate_skill.py
 python .\scripts\package_skill.py
-.\scripts\tag_release.ps1 0.1.4
+.\scripts\tag_release.ps1 0.1.5
 ```
 
 Or on Unix-like shells:
@@ -185,7 +185,7 @@ Or on Unix-like shells:
 ```bash
 python ./scripts/validate_skill.py
 python ./scripts/package_skill.py
-./scripts/tag_release.sh 0.1.4
+./scripts/tag_release.sh 0.1.5
 ```
 
 ## Notes
