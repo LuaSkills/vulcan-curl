@@ -1,36 +1,45 @@
 name: vulcan-curl
-version: 0.1.6
+version: 0.1.7
 debug: false
-help:
-  main:
-    description: Help agents choose structured GET/POST entries or supported curl-style argv for one API/debug HTTP request, not webpage scraping or HTML-to-Markdown fetching.
-    file: help/help.md
-  topics:
-    - name: get
-      description: Simple API/debug GET request workflow.
-      file: help/get.md
-    - name: post
-      description: Simple API/debug POST and multipart request workflow.
-      file: help/post.md
-    - name: request
-      description: Supported curl-style argv workflow for advanced API/debug HTTP requests.
-      file: help/request.md
+registration:
+  mode: implicit
+  default_locale: en-US
+  locales:
+    en-US:
+      title: "Vulcan Curl"
+      description: "Send HTTP requests and inspect raw responses for API debugging, webhook checks, and file transfers."
+    zh-CN:
+      title: "Vulcan Curl"
+      description: "发送 HTTP 请求并读取原始响应，用于 API 调试、Webhook 检查和文件传输。"
+    zh-TW:
+      title: "Vulcan Curl"
+      description: "傳送 HTTP 請求並讀取原始回應，用於 API 除錯、Webhook 檢查和檔案傳輸。"
+  prompt_skills:
+    - name: http-workflow
+      file: skills/http-workflow/SKILL.md
+      locales:
+        en-US:
+          title: "HTTP request workflow"
+          description: "Choose structured GET or POST for routine API calls, or read the supported curl-style arguments for advanced requests."
+        zh-CN:
+          title: "HTTP 请求指南"
+          description: "介绍何时用结构化 GET、POST，以及何时使用支持的 curl 风格参数。"
+        zh-TW:
+          title: "HTTP 請求指南"
+          description: "說明何時使用結構化 GET、POST，以及何時使用支援的 curl 風格參數。"
 entries:
   - name: get
     description: "Execute one simple GET request for API debugging, webhook checks, or file downloads with url, params, headers, and timeout only. This tool returns raw HTTP response content and does not convert webpages to Markdown; use a browser-oriented tool for webpage fetching or rendered page inspection."
     lua_entry: runtime/vulcan-curl-get.lua
     lua_module: vulcan_curl_get
-    help: get
     input_schema_file: schemas/get.input.schema.json
   - name: post
     description: "Execute one simple POST request for API debugging, webhook testing, or multipart upload checks with url, headers, and one body mode: json, form, or raw body. This tool returns raw HTTP response content and does not convert webpages to Markdown; use a browser-oriented tool for webpage fetching or rendered page inspection."
     lua_entry: runtime/vulcan-curl-post.lua
     lua_module: vulcan_curl_post
-    help: post
     input_schema_file: schemas/post.input.schema.json
   - name: request
     description: "Execute one advanced API/debug HTTP request through lua-curl using a runtime-parsed subset of Linux curl-style argv semantics without depending on platform-specific shell syntax, including supported target TLS and HTTPS proxy TLS flags. This tool is not intended for webpage scraping, JS-rendered page fetching, or HTML-to-Markdown conversion."
     lua_entry: runtime/vulcan-curl.lua
     lua_module: vulcan_curl
-    help: request
     input_schema_file: schemas/request.input.schema.json

@@ -1,5 +1,7 @@
 # vulcan-curl
 
+Vulcan Code 内可加载[随包提示词 Skill](skills/http-workflow/SKILL.md)，查看如何选择工具和发起调用。
+
 面向 Vulcan Agent 的 AI 原生 HTTP 请求技能。
 
 `vulcan-curl` 为 Vulcan Agent 提供一层适合 AI 调用的 HTTP 请求能力。常见 API 调试、Webhook 联调和下载排查可以使用结构化 `GET` 和 `POST` 入口，复杂请求则可以使用较底层的受支持 curl-style argv 入口，同时避免 Agent 自己拼接平台相关 shell 命令和引号转义。
@@ -19,7 +21,7 @@
 
 ## 工具
 
-### `vulcan-curl-get`
+### `vulcan_curl_get`
 
 用于简单 API / 调试类 HTTP 读取。
 
@@ -35,7 +37,7 @@
 - `save_headers_to`
 - `flags`
 
-### `vulcan-curl-post`
+### `vulcan_curl_post`
 
 用于简单 API 写入、Webhook 测试或上传类请求，支持一种主要 payload 类型：
 
@@ -44,9 +46,9 @@
 - `files` / `file_lines`
 - `body`
 
-每次请求只应选择一种 payload 类型。当请求形态超出结构化 POST schema 时，切换到 `vulcan-curl-request`。
+每次请求只应选择一种 payload 类型。当请求形态超出结构化 POST schema 时，切换到 `vulcan_curl_request`。
 
-### `vulcan-curl-request`
+### `vulcan_curl_request`
 
 当需要受支持的 curl-style argv 语义来处理更复杂的 API / HTTP 调试请求，但不希望依赖平台相关 shell 引号规则时使用。
 
@@ -58,7 +60,7 @@
 
 在 Windows 上，当请求没有显式提供 CA 文件时，`vulcan-curl` 会为目标 TLS 与 HTTPS 代理 TLS 启用 libcurl 原生 CA 查找。这样代理证书可以走 Windows 信任库完成校验，不需要关闭证书验证。
 
-在 Linux 和 macOS 上，libcurl 会使用宿主构建所选择的 CA bundle 或信任后端。如果 HTTPS 代理使用的私有 CA 或企业 CA 不在该后端可见范围内，应通过 `vulcan-curl-request` 传入 `--proxy-cacert` 或 `--proxy-capath`。目标站点证书链仍使用 `--cacert` 或 `--capath`，`--proxy-insecure` 仅建议用于临时诊断。
+在 Linux 和 macOS 上，libcurl 会使用宿主构建所选择的 CA bundle 或信任后端。如果 HTTPS 代理使用的私有 CA 或企业 CA 不在该后端可见范围内，应通过 `vulcan_curl_request` 传入 `--proxy-cacert` 或 `--proxy-capath`。目标站点证书链仍使用 `--cacert` 或 `--capath`，`--proxy-insecure` 仅建议用于临时诊断。
 
 ## 输出控制
 

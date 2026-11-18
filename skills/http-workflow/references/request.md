@@ -1,4 +1,4 @@
-# `vulcan-curl-request`
+# `vulcan_curl_request`
 
 Use this workflow when you want supported Linux curl-style argv semantics for advanced API/debug HTTP requests without depending on the shell's quoting rules.
 

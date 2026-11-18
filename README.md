@@ -1,5 +1,7 @@
 # vulcan-curl
 
+See the [bundled prompt skill](skills/http-workflow/SKILL.md) for tool selection and call examples.
+
 AI-native HTTP request skill for Vulcan agents.
 
 Chinese version: [README.zh-CN.md](README.zh-CN.md)
@@ -21,7 +23,7 @@ Do not use `vulcan-curl` as a webpage-fetching or scraping tool when the real go
 
 ## Tools
 
-### `vulcan-curl-get`
+### `vulcan_curl_get`
 
 Use this entry for simple API/debug HTTP reads.
 
@@ -48,7 +50,7 @@ headers:
 flags: response-header
 ```
 
-### `vulcan-curl-post`
+### `vulcan_curl_post`
 
 Use this entry for simple write-style requests with one main payload family.
 
@@ -59,7 +61,7 @@ Supported payload families:
 - `files` / `file_lines`
 - `body`
 
-Only one payload family should be used per request. Switch to `vulcan-curl-request` when the request shape no longer fits the structured POST schema.
+Only one payload family should be used per request. Switch to `vulcan_curl_request` when the request shape no longer fits the structured POST schema.
 
 Example:
 
@@ -71,7 +73,7 @@ bearer: "${TOKEN}"
 flags: request-header,response-header
 ```
 
-### `vulcan-curl-request`
+### `vulcan_curl_request`
 
 Use this entry when you need supported curl-style argv semantics without depending on platform-specific shell quoting.
 
@@ -97,7 +99,7 @@ This entry is best for advanced TLS, proxy, multipart upload, retry, and unusual
 
 On Windows, `vulcan-curl` enables libcurl native CA lookup for target TLS and HTTPS proxy TLS when the request does not provide explicit CA files. This lets proxy certificates chain to the Windows trust store without disabling verification.
 
-On Linux and macOS, libcurl uses the CA bundle or trust backend selected by the host build. If an HTTPS proxy uses a private or enterprise CA that is not visible to that backend, pass `--proxy-cacert` or `--proxy-capath` through `vulcan-curl-request`. Use `--cacert` or `--capath` for the target server certificate chain, and reserve `--proxy-insecure` for temporary diagnostics.
+On Linux and macOS, libcurl uses the CA bundle or trust backend selected by the host build. If an HTTPS proxy uses a private or enterprise CA that is not visible to that backend, pass `--proxy-cacert` or `--proxy-capath` through `vulcan_curl_request`. Use `--cacert` or `--capath` for the target server certificate chain, and reserve `--proxy-insecure` for temporary diagnostics.
 
 ## Output Controls
 
@@ -134,11 +136,13 @@ vulcan-curl/
 │  ├─ get.input.schema.json
 │  ├─ post.input.schema.json
 │  └─ request.input.schema.json
-├─ help/
-│  ├─ help.md
-│  ├─ get.md
-│  ├─ post.md
-│  └─ request.md
+├─ skills/
+│  └─ http-workflow/
+│     ├─ SKILL.md
+│     └─ references/
+│        ├─ get.md
+│        ├─ post.md
+│        └─ request.md
 ├─ overflow_templates/
 ├─ resources/
 ├─ licenses/
@@ -177,7 +181,7 @@ Recommended local release steps:
 ```powershell
 python .\scripts\validate_skill.py
 python .\scripts\package_skill.py
-.\scripts\tag_release.ps1 0.1.6
+.\scripts\tag_release.ps1 0.1.7
 ```
 
 Or on Unix-like shells:
@@ -185,7 +189,7 @@ Or on Unix-like shells:
 ```bash
 python ./scripts/validate_skill.py
 python ./scripts/package_skill.py
-./scripts/tag_release.sh 0.1.6
+./scripts/tag_release.sh 0.1.7
 ```
 
 ## Notes
